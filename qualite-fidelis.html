@@ -384,6 +384,7 @@ body.day-mode .msg-thread-header:hover{background:#EEF0F8}
     <div class="live-dot"></div>
     <span style="font-size:10px;font-weight:700;color:var(--fid);background:var(--fid)18;border:1px solid var(--fid)33;padding:3px 9px;border-radius:5px;letter-spacing:.5px">FIDELIS</span>
     <span id="top-date"></span>
+    <span class="pill" style="background:#B478C822;color:#B478C8;border-color:#B478C844;font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid" id="top-dbr-f" title="Taux de débrief">📋 —%</span>
     <div id="topbar-user" style="display:none;align-items:center;gap:8px"></div>
     <button class="mode-btn" id="mode-btn" onclick="toggleMode()">☀️ Jour</button>
   </div>
@@ -825,11 +826,20 @@ function initFidelisFirebase(){
         const d=snap.val();
         if(d){evals=objToArr(d).sort((a,b)=>(a.id||0)-(b.id||0));}
         else evals=[];
-        if(_fbReady){const p=document.querySelector('#nav .nb.on');if(p)refreshCurrentPage();}
+        if(_fbReady){renderDash();refreshCurrentPage();}
       });
       _fbdb.ref('/kyper/fidelis/debriefs').on('value',snap=>{
         const d=snap.val();
         debriefs=d?objToArr(d):[];
+        if(_fbReady){
+          const activeBtn=document.querySelector('#nav .nb.on');
+          if(activeBtn){
+            const pg=activeBtn.id.replace('nb-','');
+            if(pg==='dash')renderDash();
+            else if(pg==='agent')renderAgent();
+            else if(pg==='debrief')renderDebrief();
+          }
+        }
       });
       _fbdb.ref('/kyper/fidelis/messages').on('value',snap=>{
         const d=snap.val();
@@ -869,6 +879,8 @@ function refreshCurrentPage(){
   else if(page==='agent') renderAgent();
   else if(page==='evaluateur') renderEvaluateur();
   else if(page==='data') renderData();
+  else if(page==='debrief') renderDebrief();
+  else if(page==='controleur'){const ct=document.getElementById('ctrl-content');if(ct&&ct.innerHTML)showCtTab(document.querySelector('#page-controleur .pq-btn.act')?.id?.replace('ct-tab-',''),'');}
 }
 function saveDebriefs(){FB.set("/debriefs",arrToObj(debriefs));if(!_fbReady)localStorage.setItem("fidelis_debriefs_v1",JSON.stringify(debriefs));}
 function saveAuditLog(){FB.set("/audit",arrToObj(auditLog));if(!_fbReady)localStorage.setItem("fidelis_audit_v1",JSON.stringify(auditLog));}
@@ -1093,6 +1105,14 @@ function renderDash(){
   const ev=filteredEvals();
   const n=ev.length;
   document.getElementById("dash-sub").textContent=n+" évaluation(s) · Projet FIDELIS";
+  // Taux de débrief dans topbar
+  const _dbN=ev.filter(e=>e.debriefStatus==="valide"||e.debriefStatus==="done").length;
+  const _dbTx=n>0?Math.round(_dbN/n*100):0;
+  const _dbEl=document.getElementById("top-dbr-f");
+  if(_dbEl){
+    _dbEl.textContent="📋 "+_dbTx+"% débriefés";
+    _dbEl.style.color=_dbTx>=80?"var(--g)":_dbTx>=50?"var(--o)":"var(--r)";
+  }
   document.getElementById("dash-period").textContent=filtre.deb&&filtre.fin?filtre.deb+" → "+filtre.fin:new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"2-digit",month:"long"});
 
   const nDon=ev.filter(e=>e.don==="Oui").length;
@@ -1621,6 +1641,7 @@ function validerDebrief(id,status){
   saveEvals();
   logAccess("Débrief","Validé: "+evals[idx].agent);
   renderDebrief();
+  refreshCurrentPage();
 }
 function exportDebriefCSV(){
   const ev=filteredEvals();
@@ -2818,9 +2839,7 @@ const SHORT_REQUESTS=[
   {id:"s8",icon:"📞",label:"Appel de suivi",text:"Merci de planifier un appel de suivi avec l'agent concerné."},
 ];
 
-function loadMessages(){
-  try{MESSAGES=JSON.parse(localStorage.getItem("fidelis_messages_v1")||"[]");}catch(e){MESSAGES=[];}
-}
+function loadMessages(){/* données gérées par FB.listen en temps réel */}
 function saveMessages(){FB.set("/messages",arrToObj(MESSAGES));if(!_fbReady)localStorage.setItem("fidelis_messages_v1",JSON.stringify(MESSAGES));}
 
 function getUnreadCount(){
@@ -2960,8 +2979,7 @@ function replyTo(username){
 }
 
 function deleteMsg(msgId){
-  if(!confirm("Supprimer ce message ?"))return;
-  loadMessages();
+  if(!confirm('Supprimer ce message ?'))return;
   MESSAGES=MESSAGES.filter(m=>m.id!==msgId);
   saveMessages();
   renderMsgTab(MSG_CURRENT_TAB);

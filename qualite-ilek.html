@@ -389,6 +389,7 @@ body.day-mode .msg-list-item.unread{background:#EBF5FF;border-color:#40C4FF}
     <span style="background:#FFAB4022;color:#FFAB40;border:1px solid #FFAB4044;border-radius:4px;font-size:9px;font-weight:700;padding:2px 7px;letter-spacing:.5px">CLIENT · ILEK</span><span id="top-date"></span>
     <span class="pill" id="top-ev">0 éval(s)</span>
     <span class="pill" style="background:#40C4FF22;color:var(--b);border-color:#40C4FF44" id="top-ct">0 contrat(s)</span>
+    <span class="pill" style="background:#B478C822;color:#B478C8;border-color:#B478C844" id="top-dbr" title="Taux de débrief">📋 —%</span>
     <button class="mode-toggle" id="mode-btn" onclick="toggleMode()" title="Changer le thème">🌙 Nuit</button>
     <div class="user-badge" id="topbar-user"></div>
   </div>
@@ -1056,6 +1057,19 @@ function logAudit(type,ev,extra={}){
 function updateCounters(){
   document.getElementById("top-ev").textContent=evals.length+" éval(s)";
   document.getElementById("top-ct").textContent=contrats.length+" contrat(s)";
+  // Taux de débrief dans topbar
+  const _evF=filteredEvals();
+  const _nb=_evF.length;
+  const _debIds=new Set(debriefs.map(d=>d.evalId));
+  const _nbVal=_evF.filter(e=>_debIds.has(e.id)).length;
+  const _tx=_nb>0?Math.round(_nbVal/_nb*100):0;
+  const _dEl=document.getElementById("top-dbr");
+  if(_dEl){
+    _dEl.textContent="📋 "+_tx+"% débriefés";
+    _dEl.style.color=_tx>=80?"var(--g)":_tx>=50?"var(--o)":"var(--r)";
+    _dEl.style.background=_tx>=80?"#00E67211":_tx>=50?"#FF980011":"#FF525211";
+    _dEl.style.borderColor=_tx>=80?"#00E67233":_tx>=50?"#FF980033":"#FF525233";
+  }
   const e=document.getElementById("fd-nb");if(e)e.textContent=evals.length;
   const c=document.getElementById("ct-nb");if(c)c.textContent=contrats.length;
 }
@@ -1269,6 +1283,7 @@ function enregistrer(){
   const al=document.getElementById("alert-ok");
   al.textContent= (editMode===null) ? "✓ Éval #"+entry.num+" enregistrée !" : "✓ Modification enregistrée !";
   al.classList.add("on");setTimeout(()=>{al.classList.remove("on");al.textContent="✓ Enregistré !";},3000);
+  updateCounters();
   nouveauFormulaire();
 }
 function nouveauFormulaire(){
@@ -2136,14 +2151,19 @@ function validerDebrief(evalId){
   const entry={evalId,superviseur:sup,date:today(),commentaire:com,feedback:feed,engagement:eng};
   if(existing>=0)debriefs[existing]=entry;else debriefs.push(entry);
   saveDebriefs();
+  updateCounters();
   renderDebrief();
+  // Auto-refresh synthèse si active
+  if(!document.getElementById('page-synthese').classList.contains('ph'))renderSynthese();
 }
 
 function annulerDebrief(evalId){
   if(!confirm("Annuler la validation de ce débrief ?"))return;
   debriefs=debriefs.filter(d=>d.evalId!==evalId);
   saveDebriefs();
+  updateCounters();
   renderDebrief();
+  if(!document.getElementById('page-synthese').classList.contains('ph'))renderSynthese();
 }
 
 function exportDebriefCSV(){
@@ -2823,18 +2843,26 @@ function exportControleurCSV(){
 
 // ═══ FIREBASE REAL-TIME LISTENERS ════════════════════════════════════════
 function refreshCurrentPage(){
-  const pages=['synthese','agent','item','coaching','ventes','contrat','data','debrief','controleur'];
+  const pages=['formulaire','synthese','analyse','coaching','contrat','data','debrief','controleur','agents','messages'];
   const active=pages.find(p=>{const el=document.getElementById('page-'+p);return el&&!el.classList.contains('ph');});
   if(!active)return;
   if(active==='synthese')renderSynthese();
-  else if(active==='agent')renderAgent();
-  else if(active==='item')renderItem();
+  else if(active==='analyse'){
+    const at=document.querySelector('#page-analyse .pq-btn.act');
+    const tab=at?at.id.replace('atab-',''):'agent';
+    if(tab==='agent')renderAgent();
+    else if(tab==='item')renderItem();
+    else if(tab==='ventes')renderVentes();
+    else if(tab==='evaluateur')renderEvaluateur();
+    else if(tab==='flash')renderFlash();
+  }
   else if(active==='coaching')renderCoaching();
-  else if(active==='ventes')renderVentes();
-  else if(active==='contrat'){renderContratTable();}
+  else if(active==='contrat')renderContratTable();
   else if(active==='data')renderData();
   else if(active==='debrief')renderDebrief();
   else if(active==='controleur')renderControleur();
+  else if(active==='agents')renderAgents();
+  else if(active==='messages')renderMessages();
 }
 
 function initFirebaseListeners(){
@@ -2842,6 +2870,7 @@ function initFirebaseListeners(){
   FB.listen('/qualite/evals',data=>{
     evals=objToArr(data).sort((a,b)=>(a.num||0)-(b.num||0));
     updateCounters();
+    updateAllBadges();
     const eid=document.getElementById("fd-eval-id");if(eid&&editMode===null)eid.textContent="#"+(evalSeq+1);
     if(_fbReady)refreshCurrentPage();
   });
@@ -2856,8 +2885,12 @@ function initFirebaseListeners(){
     updateCounters();
     if(_fbReady)refreshCurrentPage();
   });
-  // Débriefs
-  FB.listen('/qualite/debriefs',data=>{debriefs=objToArr(data);});
+  // Débriefs — temps réel (toutes les pages qui affichent le taux)
+  FB.listen('/qualite/debriefs',data=>{
+    debriefs=objToArr(data);
+    updateCounters();
+    if(_fbReady)refreshCurrentPage();
+  });
   // Audit & deleted
   FB.listen('/qualite/audit',data=>{auditLog=objToArr(data);});
   FB.listen('/qualite/deleted',data=>{deletedEvals=objToArr(data);});
@@ -2868,6 +2901,13 @@ function initFirebaseListeners(){
   FB.listen('/shared/users',data=>{if(data){USERS_DB={...USERS_DB_DEFAULT,...data};}});
   // Access log
   FB.listen('/shared/access',data=>{accessLog=objToArr(data);});
+  // Messages — temps réel
+  FB.listen('/qualite/messages',data=>{
+    MESSAGES=objToArr(data);
+    updateAllBadges();
+    const p=document.querySelector('.page:not(.ph)');
+    if(p&&p.id==='page-messages')renderMessages();
+  });
 }
 
 // ═══ INIT ══════════════════════════════════════════════════════════════════
@@ -2930,6 +2970,12 @@ document.addEventListener("DOMContentLoaded",()=>{
       return _fbdb.ref('/kyper/qualite/seq').once('value');
     }).then(snap=>{
       evalSeq=snap.val()||0;
+      return _fbdb.ref('/kyper/qualite/debriefs').once('value');
+    }).then(snap=>{
+      debriefs=objToArr(snap.val());
+      return _fbdb.ref('/kyper/qualite/contrats').once('value');
+    }).then(snap=>{
+      contrats=objToArr(snap.val());
       fbMsg.textContent="Données chargées — initialisation...";
       // Start all real-time listeners
       initFirebaseListeners();
@@ -3179,8 +3225,11 @@ const SHORT_MSGS = [
 ];
 
 /* ── Utils ────────────────────────────────────────────────────── */
-function loadMessages(){try{MESSAGES=JSON.parse(localStorage.getItem('ilek_messages_v1')||'[]');}catch(e){MESSAGES=[];}}
-function saveMessages(){localStorage.setItem('ilek_messages_v1',JSON.stringify(MESSAGES));}
+function loadMessages(){/* données gérées par FB.listen */}
+function saveMessages(){
+  FB.set('/qualite/messages', arrToObj(MESSAGES));
+  localStorage.setItem('ilek_messages_v1', JSON.stringify(MESSAGES)); // fallback
+}
 
 function getUnreadCount(){
   if(!currentUser)return 0;

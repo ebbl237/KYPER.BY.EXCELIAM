@@ -191,6 +191,7 @@ textarea.inp{resize:vertical;min-height:60px}
   <button class="nb"    onclick="goPage('eligibilite',this)">🎯 ÉLIGIBILITÉ</button>
   <button class="nb"    id="nav-data" onclick="goPage('data',this)">🗄️ BASE DATA</button>
   <button class="nb"    id="nav-ctrl" onclick="goPage('controleur',this)" style="color:#00BFA5">🔍 CONTRÔLEUR</button>
+  <button class="nb"    id="nav-messages" onclick="goPage('messages',this)" style="color:#40C4FF">💬 MESSAGES<span class="msg-badge" id="msg-count-badge" style="display:none">0</span></button>
 </div>
 
 <!-- FILTER BAR -->
@@ -426,6 +427,49 @@ textarea.inp{resize:vertical;min-height:60px}
   <div id="ctrl-content"></div>
 </div>
 
+<!-- ══════ PAGE MESSAGES ══════ -->
+<div class="page ph" id="page-messages">
+  <div class="ph2">
+    <div>
+      <div class="pt2" style="color:#40C4FF">MESSAGERIE KYPER</div>
+      <div class="ps">Échanges internes · Demandes Formation · Notifications</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn-b" onclick="renderMessages()" style="background:var(--c2);border:1px solid var(--bd);color:var(--m)">🔄 Actualiser</button>
+    </div>
+  </div>
+  <div style="padding:0 20px 20px;display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start" id="msg-layout">
+    <!-- Sidebar composition -->
+    <div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="stitle" style="color:#40C4FF;margin-bottom:10px">◆ NOUVEAU MESSAGE</div>
+        <div style="margin-bottom:10px">
+          <div style="font-size:10px;color:var(--m);margin-bottom:6px;font-weight:700">DESTINATAIRES :</div>
+          <div id="msg-recipients" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+        <textarea class="inp" id="msg-text" rows="4" placeholder="Votre message..." style="width:100%;resize:vertical;font-size:12px;margin-bottom:10px"></textarea>
+        <button class="btn-g" onclick="sendFormationMsg(false)" style="width:100%;background:#40C4FF;color:#000;font-weight:700">✉️ Envoyer</button>
+      </div>
+      <!-- Short messages -->
+      <div class="card">
+        <div class="stitle" style="color:#40C4FF;margin-bottom:10px">◆ DEMANDES RAPIDES</div>
+        <div id="msg-short-btns" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+    <!-- Inbox/Outbox -->
+    <div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="pq-btn act" id="msgtab-inbox"  onclick="switchFormMsgTab('inbox',this)">📥 Reçus <span id="msg-unread-badge" style="display:none;background:var(--teal);color:#000;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:800;margin-left:4px">0</span></button>
+        <button class="pq-btn"     id="msgtab-outbox" onclick="switchFormMsgTab('outbox',this)">📤 Envoyés</button>
+        <button class="pq-btn"     id="msgtab-short"  onclick="switchFormMsgTab('short',this)">⚡ Short</button>
+        <button class="pq-btn"     id="msgtab-all"    onclick="switchFormMsgTab('all',this)" style="display:none">👁 Tous</button>
+      </div>
+      <div id="msg-inbox-ct"></div>
+    </div>
+  </div>
+</div>
+
+
 <script>
 // ══════════════════════════════════════════════
 // ═══ FIREBASE CONFIG — UNE SEULE LIGNE À MODIFIER ═══
@@ -550,6 +594,7 @@ function filteredSessions(){
 // ══════════ NAVIGATION ══════════
 function goPage(id,btn){
   if(["data","controleur"].includes(id)&&!canDelete()){alert("⛔ Accès restreint — Réservé au Responsable Formation Qualité.");return;}
+  if(id==='messages'){setTimeout(()=>renderMessages(),50);}
   document.querySelectorAll(".page").forEach(p=>p.classList.add("ph"));
   document.querySelectorAll(".nb").forEach(b=>b.classList.remove("on"));
   document.getElementById("page-"+id).classList.remove("ph");
@@ -937,6 +982,13 @@ function initFirebaseListeners(){
   // Shared data (comptes + logs partagés avec Qualité by KYPER)
   FB.listen('/shared/users', data=>{if(data){USERS_DB={...USERS_DB_DEFAULT,...data};previewRole();}});
   FB.listen('/shared/access', data=>{accessLog=objToArr(data);});
+  // Messages temps réel
+  FB.listen('/formation/messages', data=>{
+    MESSAGES = data ? objToArr(data) : [];
+    updateMsgBadge();
+    const activePage = document.querySelector('.page:not(.ph)');
+    if(activePage && activePage.id==='page-messages') renderFormMsgList();
+  });
 }
 
 // ══════════ DOMContentLoaded ══════════
@@ -1018,6 +1070,218 @@ document.addEventListener("DOMContentLoaded", ()=>{
     fbErr.innerHTML=`<b>Erreur d'initialisation :</b> ${err.message}`;
   }
 });
+
+/* ══ MESSAGERIE FORMATION ════════════════════════════════════ */
+let MESSAGES = [];
+let MSG_SELECTED = [];
+let FORM_MSG_TAB = 'inbox';
+
+const FORM_SHORT_REQUESTS = [
+  {id:'f1', icon:'📋', label:'Débrief requis',    text:'Merci de procéder au débrief de l\'agent dès que possible.'},
+  {id:'f2', icon:'📝', label:'Session à valider', text:'Une session de formation est en attente de validation.'},
+  {id:'f3', icon:'⚠️', label:'Alerte présence',   text:'Un problème de présence a été détecté sur une session.'},
+  {id:'f4', icon:'🎓', label:'Attestation prête', text:'L\'attestation de formation est disponible et prête à être remise.'},
+  {id:'f5', icon:'📊', label:'Rapport demandé',   text:'Merci de préparer le rapport de la dernière session de formation.'},
+];
+
+function _formRoleIcon(role){
+  return {RQF:'👑',SUP:'🎯',CTRL:'🔍',FORM:'🎓',VISIT:'👁'}[role]||'👤';
+}
+function _formRoleColor(role){
+  return {RQF:'#FFD740',SUP:'#00E676',CTRL:'#40C4FF',FORM:'#B478C8',VISIT:'#8891AA'}[role]||'#8891AA';
+}
+
+function saveMessages(){
+  FB.set('/formation/messages', arrToObj(MESSAGES));
+}
+
+function getFormUnreadCount(){
+  if(!currentUser) return 0;
+  return MESSAGES.filter(m=>
+    Array.isArray(m.to) && m.to.includes(currentUser.username) &&
+    !(m.readBy||[]).includes(currentUser.username)
+  ).length;
+}
+
+function updateMsgBadge(){
+  const n = getFormUnreadCount();
+  const badge = document.getElementById('msg-count-badge');
+  const unreadBadge = document.getElementById('msg-unread-badge');
+  if(badge){badge.style.display = n>0 ? 'inline-flex':'none'; badge.textContent = n||'';}
+  if(unreadBadge){unreadBadge.style.display = n>0 ? 'inline':'none'; unreadBadge.textContent = n||'';}
+}
+
+function renderMessages(){
+  if(!currentUser) return;
+  const isRQF = canDelete();
+
+  // Bouton "Tous" visible seulement pour RQF
+  const allTab = document.getElementById('msgtab-all');
+  if(allTab) allTab.style.display = isRQF ? '' : 'none';
+
+  // Build destinataires chips
+  const recDiv = document.getElementById('msg-recipients');
+  if(recDiv){
+    const others = Object.entries(USERS_DB).filter(([u])=>u!==currentUser.username);
+    recDiv.innerHTML = others.map(([u,d])=>
+      `<div class="msg-user-chip ${MSG_SELECTED.includes(u)?'sel':''}" onclick="toggleFormMsgUser('${u}',this)">
+        <span style="font-size:10px">${_formRoleIcon(d.role)}</span>
+        <span>${(d.display||u).split('—')[0].trim()}</span>
+      </div>`
+    ).join('');
+  }
+
+  // Short request buttons
+  const shortDiv = document.getElementById('msg-short-btns');
+  if(shortDiv){
+    shortDiv.innerHTML = FORM_SHORT_REQUESTS.map(r=>
+      `<button class="msg-short-btn" onclick="sendFormationMsg(true,'${r.id}')">${r.icon} ${r.label}</button>`
+    ).join('');
+  }
+
+  renderFormMsgList();
+  updateMsgBadge();
+}
+
+function toggleFormMsgUser(username, el){
+  if(MSG_SELECTED.includes(username)){
+    MSG_SELECTED = MSG_SELECTED.filter(u=>u!==username);
+    el.classList.remove('sel');
+  } else {
+    MSG_SELECTED.push(username);
+    el.classList.add('sel');
+  }
+}
+
+function switchFormMsgTab(tab, btn){
+  document.querySelectorAll('#page-messages .pq-btn').forEach(b=>b.classList.remove('act'));
+  if(btn) btn.classList.add('act');
+  FORM_MSG_TAB = tab;
+  renderFormMsgList();
+}
+
+function renderFormMsgList(){
+  const ct = document.getElementById('msg-inbox-ct');
+  if(!ct || !currentUser) return;
+
+  const isRQF = canDelete();
+  let msgs = [...MESSAGES].sort((a,b)=>b.ts-a.ts);
+
+  if(FORM_MSG_TAB==='inbox')
+    msgs = msgs.filter(m=>Array.isArray(m.to)&&m.to.includes(currentUser.username));
+  else if(FORM_MSG_TAB==='outbox')
+    msgs = msgs.filter(m=>m.from===currentUser.username);
+  else if(FORM_MSG_TAB==='short')
+    msgs = msgs.filter(m=>m.isShort&&(m.from===currentUser.username||(Array.isArray(m.to)&&m.to.includes(currentUser.username))));
+  else if(FORM_MSG_TAB==='all' && isRQF)
+    msgs = msgs; // tous
+  else
+    msgs = msgs.filter(m=>m.from===currentUser.username||(Array.isArray(m.to)&&m.to.includes(currentUser.username)));
+
+  if(msgs.length===0){
+    ct.innerHTML=`<div class="card" style="text-align:center;color:var(--m);padding:32px">
+      ${FORM_MSG_TAB==='inbox'?'📭 Aucun message reçu':FORM_MSG_TAB==='outbox'?'📤 Aucun envoi':'📭 Aucun message'}
+    </div>`;
+    return;
+  }
+
+  ct.innerHTML = msgs.map(m=>{
+    const senderUser = USERS_DB[m.from]||{role:'VISIT',display:m.from};
+    const senderRole = senderUser.role||'VISIT';
+    const senderColor = _formRoleColor(senderRole);
+    const senderName = (senderUser.display||m.from).split('—')[0].trim();
+    const toNames = (m.to||[]).map(t=>{
+      const u=USERS_DB[t]; return u?(u.display||t).split('—')[0].trim():t;
+    }).join(', ');
+    const isOut = m.from===currentUser.username;
+    const isUnread = !isOut && !(m.readBy||[]).includes(currentUser.username);
+    const dt = new Date(m.ts);
+    const dateStr = dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'})+' '+dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+
+    return `<div class="msg-thread ${isUnread?'unread':''}" onclick="markFormMsgRead('${m.id}');this.classList.remove('unread')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="background:${senderColor}22;border:1px solid ${senderColor}44;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:700;color:${senderColor}">
+            ${_formRoleIcon(senderRole)} ${senderName}
+          </span>
+          ${!isOut?'':`<span style="font-size:10px;color:var(--m)">→ ${toNames}</span>`}
+          ${m.isShort?`<span style="background:#40C4FF22;color:#40C4FF;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700">⚡ SHORT</span>`:''}
+          ${isUnread?`<span style="background:var(--teal)22;color:var(--teal);border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700">NOUVEAU</span>`:''}
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="font-size:10px;color:var(--m)">${dateStr}</span>
+          ${(isRQF||isOut)?`<button onclick="event.stopPropagation();deleteFormMsg('${m.id}')" style="background:transparent;border:1px solid var(--r)44;color:var(--r);border-radius:5px;padding:1px 8px;cursor:pointer;font-size:10px;font-family:inherit">🗑</button>`:''}
+        </div>
+      </div>
+      <div class="msg-bubble ${isOut?'out':m.isShort?'short-req':'in'}">
+        ${m.isShort?`<div style="font-size:9px;font-weight:800;color:#40C4FF;margin-bottom:4px">⚡ DEMANDE RAPIDE</div>`:''}
+        <div style="font-size:13px;line-height:1.5;white-space:pre-wrap">${m.text}</div>
+        <div class="msg-meta">${isOut?'Vous':senderName} · ${dateStr}</div>
+      </div>
+      ${!isOut?`<div style="margin-top:8px">
+        <button onclick="event.stopPropagation();replyFormMsg('${m.from}')"
+          style="background:var(--c2);border:1px solid var(--bd);color:var(--m);border-radius:7px;padding:5px 12px;cursor:pointer;font-size:11px;font-family:inherit">↩️ Répondre</button>
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function sendFormationMsg(isShort, shortId){
+  if(!currentUser){alert('Connectez-vous');return;}
+  if(MSG_SELECTED.length===0){alert('⚠️ Sélectionnez au moins un destinataire');return;}
+  let text = '';
+  if(isShort){
+    const req = FORM_SHORT_REQUESTS.find(r=>r.id===shortId);
+    if(!req) return;
+    text = req.icon+' '+req.label+'\n\n'+req.text;
+  } else {
+    text = (document.getElementById('msg-text')?.value||'').trim();
+    if(!text){alert('⚠️ Message vide');return;}
+  }
+  const msg = {
+    id:'msg_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+    from: currentUser.username,
+    to: [...MSG_SELECTED],
+    text, ts: Date.now(),
+    isShort: !!isShort,
+    readBy: [currentUser.username]
+  };
+  MESSAGES.push(msg);
+  saveMessages();
+  if(!isShort){const ta=document.getElementById('msg-text');if(ta)ta.value='';}
+  switchFormMsgTab('outbox', document.getElementById('msgtab-outbox'));
+}
+
+function markFormMsgRead(msgId){
+  const m = MESSAGES.find(m=>m.id===msgId);
+  if(m&&currentUser&&!(m.readBy||[]).includes(currentUser.username)){
+    if(!m.readBy) m.readBy=[];
+    m.readBy.push(currentUser.username);
+    saveMessages();
+    updateMsgBadge();
+  }
+}
+
+function deleteFormMsg(msgId){
+  if(!confirm('Supprimer ce message ?')) return;
+  MESSAGES = MESSAGES.filter(m=>m.id!==msgId);
+  saveMessages();
+  renderFormMsgList();
+}
+
+function replyFormMsg(toUser){
+  MSG_SELECTED = [toUser];
+  // Cocher le chip
+  document.querySelectorAll('.msg-user-chip').forEach(el=>{
+    const onclick = el.getAttribute('onclick')||'';
+    if(onclick.includes(toUser)){el.classList.add('sel');}
+    else {el.classList.remove('sel');}
+  });
+  switchFormMsgTab('outbox', document.getElementById('msgtab-outbox'));
+  const ta = document.getElementById('msg-text');
+  if(ta) ta.focus();
+}
+/* ══ FIN MESSAGERIE FORMATION ══════════════════════════════ */
 </script>
 </body>
 </html>
