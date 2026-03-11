@@ -1065,7 +1065,14 @@ function badge(txt,cls){return`<span class="badge ${cls}">${txt}</span>`;}
 function prog(v,c){return`<div class="pt"><div class="pb" style="width:${Math.min(v*100,100)}%;background:${c}"></div></div>`;}
 function saveEvals(){FB.set("/qualite/evals",arrToObj(evals));FB.set("/qualite/seq",evalSeq);updateCounters();}
 function saveContrats(){FB.set("/qualite/contrats",arrToObj(contrats));updateCounters();}
-function saveDebriefs(){FB.set("/qualite/debriefs",arrToObj(debriefs));}
+function saveDebriefs(){
+  // Débriefs : clé = evalId (arrToObj utilise item.id → inutilisable ici)
+  const obj={};
+  debriefs.forEach(d=>{
+    if(d&&d.evalId!==undefined) obj[String(d.evalId)]={...d,id:d.evalId};
+  });
+  FB.set("/qualite/debriefs",obj);
+}
 function saveAudit(){FB.set("/qualite/audit",arrToObj(auditLog));FB.set("/qualite/deleted",arrToObj(deletedEvals));}
 function logAudit(type,ev,extra={}){
   auditLog.push({type,evalNum:ev.num,agent:ev.agent,evaluateur:ev.evaluateur,superviseur:ev.superviseur||"",
@@ -2043,6 +2050,76 @@ function buildDebriefCard(e, debrief){
   const evalItems=ITEMS.map(it=>{const v=e.notes[it.id];return{...it,val:v!==null&&v!==undefined?Number(v):null};}).filter(x=>x.val!==null);
   const faibles=evalItems.filter(x=>x.val<0.8).sort((a,b)=>a.val-b.val);
 
+  // Bloc validation — construit en JS pur (pas de template imbriqué)
+  let validBlock='';
+  if(isVal){
+    const annBtn='<button class="btn-r" style="margin-top:10px;font-size:11px;padding:5px 12px" onclick="annulerDebrief('+e.id+')">↩️ Annuler la validation</button>';
+    validBlock='<div style="background:#00E67211;border:1px solid #00E67233;border-radius:8px;padding:12px">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--g);margin-bottom:8px">✅ DÉBRIEF VALIDÉ</div>'
+      +'<div class="g3" style="gap:10px">'
+        +'<div><div style="font-size:10px;color:var(--m);margin-bottom:3px">Superviseur</div><div style="font-size:12px;font-weight:700">'+(debrief.superviseur||'—')+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--m);margin-bottom:3px">Date de débrief</div><div style="font-size:12px;font-weight:700">'+(debrief.date||'—')+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--m);margin-bottom:3px">Engagement agent</div><div style="font-size:12px;font-weight:700">'+badge(debrief.engagement||'—',debrief.engagement==='Compris et engagé'?'bg':debrief.engagement==='Partiellement compris'?'bo':'br')+'</div></div>'
+      +'</div>'
+      +(debrief.commentaire?'<div style="margin-top:8px;font-size:10px;color:var(--m);background:var(--c1);border-radius:5px;padding:6px"><b style="color:#EEF0F5">💬 Commentaire superviseur :</b><br>'+debrief.commentaire+'</div>':'')
+      +(debrief.feedback?'<div style="margin-top:6px;font-size:10px;color:var(--m);background:var(--c1);border-radius:5px;padding:6px"><b style="color:#EEF0F5">📣 Feedback agent :</b><br>'+debrief.feedback+'</div>':'')
+      +(currentUser&&currentUser.role==='RQF'?annBtn:'')
+    +'</div>';
+  } else {
+    // Vérifier si l'utilisateur connecté peut valider ce débrief
+    const isRQF=currentUser&&currentUser.role==='RQF';
+    const isAssignedSup=currentUser&&currentUser.username===e.superviseur;
+    const canVal=isRQF||isAssignedSup;
+
+    if(!canVal){
+      // Pas autorisé — afficher un message informatif
+      validBlock='<div style="background:var(--c2);border:1px solid var(--bd)44;border-radius:8px;padding:14px;text-align:center">'
+        +'<div style="font-size:22px;margin-bottom:6px">🔒</div>'
+        +'<div style="font-size:11px;font-weight:700;color:var(--m)">Validation réservée au superviseur assigné</div>'
+        +'<div style="font-size:10px;color:var(--m);margin-top:4px">Manager : <b style="color:var(--lt)">'+(e.superviseur||'—')+'</b></div>'
+      +'</div>';
+    } else {
+      // Champ superviseur : RQF choisit, manager voit son nom verrouillé
+      const supField=isRQF
+        ?'<select class="inp" id="db-sup-'+e.id+'">'
+          +'<option value="">— Sélectionner —</option>'
+          +'<option value="JOEL_KOUAME"'+(e.superviseur==='JOEL_KOUAME'?' selected':'')+'>JOEL KOUAMÉ</option>'
+          +'<option value="GISELE_SORO"'+(e.superviseur==='GISELE_SORO'?' selected':'')+'>GISÈLE SORO</option>'
+          +'<option value="FABRICE_BAILY"'+(e.superviseur==='FABRICE_BAILY'?' selected':'')+'>FABRICE BAILY</option>'
+          +'</select>'
+        :'<input class="inp" id="db-sup-'+e.id+'" value="'+currentUser.username+'" readonly style="background:var(--c1);color:var(--b);font-weight:700;cursor:default">';
+
+      validBlock='<div style="background:var(--c2);border:1px solid var(--bd);border-radius:8px;padding:12px" id="form-db-'+e.id+'">'
+        +'<div style="font-size:10px;font-weight:700;color:#B478C8;margin-bottom:10px">📋 VALIDER LE DÉBRIEF</div>'
+        +'<div class="g2" style="gap:10px;margin-bottom:10px">'
+          +'<div class="field" style="margin:0">'
+            +'<label class="lbl">Superviseur qui débrief</label>'
+            +supField
+          +'</div>'
+          +'<div class="field" style="margin:0">'
+            +'<label class="lbl">Engagement de l\'agent</label>'
+            +'<select class="inp" id="db-eng-'+e.id+'">'
+              +'<option value="">—</option>'
+              +'<option>Compris et engagé</option>'
+              +'<option>Partiellement compris</option>'
+              +'<option>Résistance observée</option>'
+              +'<option>Non réceptif</option>'
+            +'</select>'
+          +'</div>'
+        +'</div>'
+        +'<div class="field" style="margin-bottom:8px">'
+          +'<label class="lbl">💬 Commentaire superviseur</label>'
+          +'<textarea class="inp" id="db-com-'+e.id+'" rows="2" placeholder="Points abordés, contexte du débrief..."></textarea>'
+        +'</div>'
+        +'<div class="field" style="margin-bottom:10px">'
+          +'<label class="lbl">📣 Feedback / Réaction de l\'agent</label>'
+          +'<textarea class="inp" id="db-feed-'+e.id+'" rows="2" placeholder="Comment l\'agent a-t-il réagi ? Ses engagements ?"></textarea>'
+        +'</div>'
+        +'<button class="btn-g" onclick="validerDebrief('+e.id+')">✅ VALIDER LE DÉBRIEF</button>'
+      +'</div>';
+    }
+  }
+
   return`<div class="card" style="border-left:3px solid ${isVal?"var(--g)":"var(--o)"};margin-bottom:12px">
     <!-- Header éval -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px">
@@ -2112,50 +2189,8 @@ function buildDebriefCard(e, debrief){
       </div>
     </div>
 
-    <!-- Bloc validation / débrief déjà fait -->
-    ${isVal ? `
-    <div style="background:#00E67211;border:1px solid #00E67233;border-radius:8px;padding:12px">
-      <div style="font-size:10px;font-weight:700;color:var(--g);margin-bottom:8px">✅ DÉBRIEF VALIDÉ</div>
-      <div class="g3" style="gap:10px">
-        <div><div style="font-size:10px;color:var(--m);margin-bottom:3px">Superviseur</div><div style="font-size:12px;font-weight:700">${debrief.superviseur||"—"}</div></div>
-        <div><div style="font-size:10px;color:var(--m);margin-bottom:3px">Date de débrief</div><div style="font-size:12px;font-weight:700">${debrief.date||"—"}</div></div>
-        <div><div style="font-size:10px;color:var(--m);margin-bottom:3px">Engagement agent</div><div style="font-size:12px;font-weight:700">${badge(debrief.engagement||"—",debrief.engagement==="Compris et engagé"?"bg":debrief.engagement==="Partiellement compris"?"bo":"br")}</div></div>
-      </div>
-      ${debrief.commentaire?`<div style="margin-top:8px;font-size:10px;color:var(--m);background:var(--c1);border-radius:5px;padding:6px"><b style="color:#EEF0F5">💬 Commentaire superviseur :</b><br>${debrief.commentaire}</div>`:""}
-      ${debrief.feedback?`<div style="margin-top:6px;font-size:10px;color:var(--m);background:var(--c1);border-radius:5px;padding:6px"><b style="color:#EEF0F5">📣 Feedback agent :</b><br>${debrief.feedback}</div>`:""}
-      <button class="btn-r" style="margin-top:10px;font-size:11px;padding:5px 12px" onclick="annulerDebrief(${e.id})">↩️ Annuler la validation</button>
-    </div>` : `
-    <div style="background:var(--c2);border:1px solid var(--bd);border-radius:8px;padding:12px" id="form-db-${e.id}">
-      <div style="font-size:10px;font-weight:700;color:#B478C8;margin-bottom:10px">📋 VALIDER LE DÉBRIEF</div>
-      <div class="g2" style="gap:10px;margin-bottom:10px">
-        <div class="field" style="margin:0">
-          <label class="lbl">Superviseur qui débrief *</label>
-          <select class="inp" id="db-sup-${e.id}">
-            <option value="">— Sélectionner —</option>
-            <option>JOEL_KOUAME</option><option>GISELE_SORO</option><option>FABRICE_BAILY</option>
-          </select>
-        </div>
-        <div class="field" style="margin:0">
-          <label class="lbl">Engagement de l'agent</label>
-          <select class="inp" id="db-eng-${e.id}">
-            <option value="">—</option>
-            <option>Compris et engagé</option>
-            <option>Partiellement compris</option>
-            <option>Résistance observée</option>
-            <option>Non réceptif</option>
-          </select>
-        </div>
-      </div>
-      <div class="field" style="margin-bottom:8px">
-        <label class="lbl">💬 Commentaire superviseur</label>
-        <textarea class="inp" id="db-com-${e.id}" rows="2" placeholder="Points abordés, contexte du débrief..."></textarea>
-      </div>
-      <div class="field" style="margin-bottom:10px">
-        <label class="lbl">📣 Feedback / Réaction de l'agent</label>
-        <textarea class="inp" id="db-feed-${e.id}" rows="2" placeholder="Comment l'agent a-t-il réagi ? Ses engagements ?"></textarea>
-      </div>
-      <button class="btn-g" onclick="validerDebrief(${e.id})">✅ VALIDER LE DÉBRIEF</button>
-    </div>`}
+    <!-- Bloc validation / débrief -->
+    ${validBlock}
   </div>`;
 }
 
@@ -2166,7 +2201,7 @@ function validerDebrief(evalId){
   const com=document.getElementById("db-com-"+evalId)?.value||"";
   const feed=document.getElementById("db-feed-"+evalId)?.value||"";
   const eng=document.getElementById("db-eng-"+evalId)?.value||"";
-  const existing=debriefs.findIndex(d=>d.evalId===evalId);
+  const existing=debriefs.findIndex(d=>String(d.evalId)===String(evalId));
   const entry={evalId,superviseur:sup,date:today(),commentaire:com,feedback:feed,engagement:eng};
   if(existing>=0)debriefs[existing]=entry;else debriefs.push(entry);
   saveDebriefs();
@@ -2178,7 +2213,7 @@ function validerDebrief(evalId){
 
 function annulerDebrief(evalId){
   if(!confirm("Annuler la validation de ce débrief ?"))return;
-  debriefs=debriefs.filter(d=>d.evalId!==evalId);
+  debriefs=debriefs.filter(d=>String(d.evalId)!==String(evalId));
   saveDebriefs();
   updateCounters();
   renderDebrief();
