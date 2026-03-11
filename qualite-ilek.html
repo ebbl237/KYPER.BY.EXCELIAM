@@ -166,6 +166,25 @@ body.day-mode .ag-inp{background:#fff;color:#1A1D2B}
 /* ══ MESSAGERIE ════════════════════════════════════════════════ */
 .msg-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;background:#FF5252;color:#fff;border-radius:8px;font-size:9px;font-weight:900;padding:0 4px;margin-left:3px;vertical-align:middle;line-height:1}
 .msg-panel{background:var(--c1);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+.msg-thread{border:1px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:10px;cursor:pointer;transition:background .15s}
+.msg-thread:hover{background:var(--c2)}
+.msg-thread.unread{border-color:var(--teal)44;box-shadow:0 0 0 1px var(--teal)22}
+.msg-bubble{border-radius:10px;padding:10px 14px;margin-bottom:8px;max-width:90%;word-break:break-word}
+.msg-bubble.out{background:linear-gradient(135deg,#6D28D9,#A855F7);color:#fff;margin-left:auto;border-bottom-right-radius:3px}
+.msg-bubble.in{background:var(--c2);color:var(--lt);border:1px solid var(--bd);margin-right:auto;border-bottom-left-radius:3px}
+.msg-bubble.short-req{background:linear-gradient(135deg,#1565C033,#40C4FF22);border:1px solid #40C4FF44;color:var(--lt)}
+.msg-meta{font-size:9px;opacity:.6;margin-top:4px}
+.msg-panel{background:var(--c1);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+.msg-user-chip{display:inline-flex;align-items:center;gap:5px;background:var(--c2);border:1px solid var(--bd);border-radius:20px;padding:4px 10px;font-size:11px;cursor:pointer;transition:all .15s;user-select:none}
+.msg-user-chip:hover{border-color:var(--b);color:var(--lt)}
+.msg-user-chip.sel{background:var(--b)22;border-color:var(--b);color:var(--b);font-weight:700}
+.msg-short-btn{background:var(--c2);border:1px solid var(--bd);color:var(--m);border-radius:7px;padding:7px 12px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .2s;text-align:left;width:100%}
+.msg-short-btn:hover{border-color:var(--b);color:var(--lt)}
+.day-mode .msg-user-chip{background:#F3F4F6;border-color:#CDD3E6}
+.day-mode .msg-short-btn{background:#F3F4F6;border-color:#CDD3E6}
+.day-mode .msg-bubble.in{background:#F3F4F6;border-color:#CDD3E6}
+.day-mode .msg-panel{background:#fff;border-color:#CDD3E6}
+.day-mode .msg-thread{background:#fff;border-color:#CDD3E6}
 .msg-list-item{display:flex;align-items:flex-start;gap:10px;padding:11px 16px;border-bottom:1px solid var(--bd)22;cursor:pointer;transition:background .15s}
 .msg-list-item:hover{background:var(--c2)}
 .msg-list-item.unread{border-left:3px solid var(--b);background:var(--b)08}
@@ -3185,7 +3204,7 @@ function exportAgentsCSV(){
    MESSAGERIE KYPER
 ══════════════════════════════════════════════════════════════ */
 
-let MESSAGES = [];
+let MESSAGES = [];try{const _lm=localStorage.getItem('ilek_messages_v1');if(_lm)MESSAGES=JSON.parse(_lm);}catch(e){}
 let MSG_SELECTED = [];
 let MSG_VIEW = 'inbox';
 
@@ -3401,8 +3420,11 @@ function openMsgItem(msgId,el){
 function prefillReply(username){
   MSG_SELECTED=[username];
   buildRecipientList();
-  document.getElementById('msg-text-input')?.focus();
-  switchMsgView('inbox',document.getElementById('msgtab-inbox'));
+  // Scroll to compose and focus
+  const ta=document.getElementById('msg-text-input');
+  if(ta){ta.focus();ta.scrollIntoView({behavior:'smooth',block:'center'});}
+  // Stay on current view so user can see compose + send
+  switchMsgView(MSG_VIEW,document.querySelector('#page-messages .pq-btn.act'));
 }
 
 function delMyMsg(msgId){

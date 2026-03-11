@@ -329,6 +329,9 @@ body.day-mode .msg-short-btn{background:#F9FAFB;border-color:#CDD3E6}
 body.day-mode .msg-thread-header{background:#F3F4F6}
 body.day-mode .msg-thread-header:hover{background:#EEF0F8}
 
+.msg-panel{background:var(--c1);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+.day-mode .msg-panel{background:#fff;border-color:#CDD3E6}
+.day-mode .msg-thread{background:#fff;border-color:#CDD3E6}
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -826,7 +829,13 @@ function initFidelisFirebase(){
         const d=snap.val();
         if(d){evals=objToArr(d).sort((a,b)=>(a.id||0)-(b.id||0));}
         else evals=[];
-        if(_fbReady){renderDash();refreshCurrentPage();}
+        if(_fbReady){
+          renderDash();
+          refreshCurrentPage();
+          // Si page débrief active, la rafraîchir aussi
+          const dbPage=document.getElementById('page-debrief');
+          if(dbPage&&!dbPage.classList.contains('ph'))renderDebrief();
+        }
       });
       _fbdb.ref('/kyper/fidelis/debriefs').on('value',snap=>{
         const d=snap.val();
@@ -845,6 +854,8 @@ function initFidelisFirebase(){
         const d=snap.val();
         MESSAGES=d?objToArr(d):[];
         updateMsgBadge();
+        const _activeBtn=document.querySelector('#nav .nb.on');
+        if(_fbReady&&_activeBtn&&_activeBtn.id==='nb-messages')renderMessages();
       });
       _fbdb.ref('/kyper/fidelis/agents').on('value',snap=>{
         const d=snap.val();
@@ -1538,7 +1549,7 @@ function renderDebriefContent(tab){
 function buildDebriefCard(e,tab){
   const sc=e.score;
   const c=sc>=80?"var(--g)":sc>=60?"var(--ra)":"var(--r)";
-  const canVal=currentUser&&(currentUser.role==="RQF"||currentUser.role==="SUP");
+  const canVal=!!currentUser; // Tous les collaborateurs peuvent valider un débrief
   const hasCrit=e.criteres&&Object.keys(e.criteres).length>0;
 
   // Analyse rapide des critères NC pour afficher les axes
@@ -1641,6 +1652,7 @@ function validerDebrief(id,status){
   saveEvals();
   logAccess("Débrief","Validé: "+evals[idx].agent);
   renderDebrief();
+  renderDash(); // update taux débrief dans dashboard
   refreshCurrentPage();
 }
 function exportDebriefCSV(){
@@ -2826,7 +2838,7 @@ function confirmerRefusModal(evalId,from){
 }
 
 /* ══ MESSAGERIE ══════════════════════════════════════════════════ */
-let MESSAGES=[];let MSG_SELECTED_USERS=[];let MSG_CURRENT_TAB="inbox";
+let MESSAGES=[];try{const _lm=localStorage.getItem("fidelis_messages_v1");if(_lm)MESSAGES=JSON.parse(_lm);}catch(e){}let MSG_SELECTED_USERS=[];let MSG_CURRENT_TAB="inbox";
 
 const SHORT_REQUESTS=[
   {id:"s1",icon:"📋",label:"Débrief requis",text:"Merci de procéder au débrief de l'agent dès que possible."},
@@ -2840,7 +2852,7 @@ const SHORT_REQUESTS=[
 ];
 
 function loadMessages(){/* données gérées par FB.listen en temps réel */}
-function saveMessages(){FB.set("/messages",arrToObj(MESSAGES));if(!_fbReady)localStorage.setItem("fidelis_messages_v1",JSON.stringify(MESSAGES));}
+function saveMessages(){FB.set("/fidelis/messages",arrToObj(MESSAGES));if(!_fbReady)localStorage.setItem("fidelis_messages_v1",JSON.stringify(MESSAGES));}
 
 function getUnreadCount(){
   if(!currentUser)return 0;

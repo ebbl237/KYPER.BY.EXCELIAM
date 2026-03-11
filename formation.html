@@ -115,6 +115,26 @@ textarea.inp{resize:vertical;min-height:60px}
 .user-badge{display:none;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;background:#1A1D2B;border:1px solid var(--bd)}
 @media(max-width:768px){.page{padding:10px 12px}.g3{grid-template-columns:1fr 1fr}.g4{grid-template-columns:1fr 1fr}.fside{flex:1 1 100%}}
 @media(max-width:480px){.g3,.g4{grid-template-columns:1fr}}
+
+.msg-thread{border:1px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:10px;cursor:pointer;transition:background .15s}
+.msg-thread:hover{background:var(--c2)}
+.msg-thread.unread{border-color:var(--teal)44;box-shadow:0 0 0 1px var(--teal)22}
+.msg-bubble{border-radius:10px;padding:10px 14px;margin-bottom:8px;max-width:90%;word-break:break-word}
+.msg-bubble.out{background:linear-gradient(135deg,#6D28D9,#A855F7);color:#fff;margin-left:auto;border-bottom-right-radius:3px}
+.msg-bubble.in{background:var(--c2);color:var(--lt);border:1px solid var(--bd);margin-right:auto;border-bottom-left-radius:3px}
+.msg-bubble.short-req{background:linear-gradient(135deg,#1565C033,#40C4FF22);border:1px solid #40C4FF44;color:var(--lt)}
+.msg-meta{font-size:9px;opacity:.6;margin-top:4px}
+.msg-panel{background:var(--c1);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+.msg-user-chip{display:inline-flex;align-items:center;gap:5px;background:var(--c2);border:1px solid var(--bd);border-radius:20px;padding:4px 10px;font-size:11px;cursor:pointer;transition:all .15s;user-select:none}
+.msg-user-chip:hover{border-color:var(--b);color:var(--lt)}
+.msg-user-chip.sel{background:var(--b)22;border-color:var(--b);color:var(--b);font-weight:700}
+.msg-short-btn{background:var(--c2);border:1px solid var(--bd);color:var(--m);border-radius:7px;padding:7px 12px;cursor:pointer;font-size:11px;font-family:inherit;transition:all .2s;text-align:left;width:100%}
+.msg-short-btn:hover{border-color:var(--b);color:var(--lt)}
+.day-mode .msg-user-chip{background:#F3F4F6;border-color:#CDD3E6}
+.day-mode .msg-short-btn{background:#F3F4F6;border-color:#CDD3E6}
+.day-mode .msg-bubble.in{background:#F3F4F6;border-color:#CDD3E6}
+.day-mode .msg-panel{background:#fff;border-color:#CDD3E6}
+.day-mode .msg-thread{background:#fff;border-color:#CDD3E6}
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -548,6 +568,7 @@ function applyRolePermissions(){
   document.querySelectorAll(".btn-suppr-main").forEach(b=>b.style.display=isRQF?"":"none");
   ["nav-data","nav-ctrl"].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=isRQF?"":"none";});
   const tc=document.getElementById("ct-tab-comptes");if(tc)tc.style.display=isRQF?"":"none";
+  const tm=document.getElementById("ct-tab-msgs");if(tm)tm.style.display=isRQF?"":"none";
 }
 
 // ══════════ DONNÉES — Firebase Realtime Database ══════════
@@ -1089,6 +1110,133 @@ function _formRoleIcon(role){
 }
 function _formRoleColor(role){
   return {RQF:'#FFD740',SUP:'#00E676',CTRL:'#40C4FF',FORM:'#B478C8',VISIT:'#8891AA'}[role]||'#8891AA';
+}
+
+
+// ══ CONTRÔLE MESSAGES (RQF) ══════════════════════════════
+function renderCtMessages(){
+  const ct=document.getElementById('ctrl-content');
+  if(!ct)return;
+  if(!canDelete()){
+    ct.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--r)">⛔ Accès réservé au Responsable Formation Qualité</div>';
+    return;
+  }
+  const allMsgs=[...MESSAGES].sort((a,b)=>b.ts-a.ts);
+  const shorts=allMsgs.filter(m=>m.isShort).length;
+  const senders=[...new Set(allMsgs.map(m=>m.from))];
+
+  ct.innerHTML=`
+  <div class="krow" style="margin-bottom:14px">
+    <div class="kcard" style="border:1px solid #40C4FF22">
+      <div style="color:var(--m);font-size:10px;margin-bottom:5px">💬 Total Messages</div>
+      <div style="font-size:28px;font-weight:900;color:#40C4FF">${allMsgs.length}</div>
+    </div>
+    <div class="kcard" style="border:1px solid var(--teal)22">
+      <div style="color:var(--m);font-size:10px;margin-bottom:5px">⚡ Short Messages</div>
+      <div style="font-size:28px;font-weight:900;color:var(--teal)">${shorts}</div>
+    </div>
+    <div class="kcard" style="border:1px solid var(--g)22">
+      <div style="color:var(--m);font-size:10px;margin-bottom:5px">✉️ Messages Libres</div>
+      <div style="font-size:28px;font-weight:900;color:var(--g)">${allMsgs.length-shorts}</div>
+    </div>
+    <div class="kcard" style="border:1px solid var(--gold)22">
+      <div style="color:var(--m);font-size:10px;margin-bottom:5px">👥 Expéditeurs</div>
+      <div style="font-size:28px;font-weight:900;color:var(--gold)">${senders.length}</div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:12px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input id="ctm-search" class="inp" placeholder="🔍 Rechercher..." oninput="_filterCtMsgs()" style="flex:1;min-width:180px;font-size:12px;padding:7px 10px">
+      <select id="ctm-type" class="inp" onchange="_filterCtMsgs()" style="width:160px;font-size:12px">
+        <option value="">Tous types</option>
+        <option value="short">⚡ Short messages</option>
+        <option value="libre">✉️ Messages libres</option>
+      </select>
+      <select id="ctm-sender" class="inp" onchange="_filterCtMsgs()" style="width:180px;font-size:12px">
+        <option value="">Tous expéditeurs</option>
+        ${senders.map(s=>{const u=USERS_DB[s];return '<option value="'+s+'">'+(u?(u.display||s).split('—')[0].trim():s)+'</option>';}).join('')}
+      </select>
+      <button onclick="_deleteAllFormMsgs()" style="background:#FF525215;border:1px solid #FF525244;color:var(--r);border-radius:7px;padding:6px 14px;cursor:pointer;font-size:11px;font-family:inherit">🗑 Vider tout</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="stitle" style="color:#40C4FF;margin-bottom:10px">◆ TOUS LES ÉCHANGES <span id="ctm-count" style="color:var(--m);font-size:10px;font-weight:400"></span></div>
+    <div id="ctm-list"></div>
+  </div>`;
+  _renderCtMsgList(allMsgs);
+}
+
+let _ctmFilter={text:'',type:'',sender:''};
+
+function _filterCtMsgs(){
+  _ctmFilter.text=(document.getElementById('ctm-search')?.value||'').toLowerCase();
+  _ctmFilter.type=document.getElementById('ctm-type')?.value||'';
+  _ctmFilter.sender=document.getElementById('ctm-sender')?.value||'';
+  _renderCtMsgList([...MESSAGES].sort((a,b)=>b.ts-a.ts));
+}
+
+function _renderCtMsgList(msgs){
+  if(_ctmFilter.type==='short') msgs=msgs.filter(m=>m.isShort);
+  if(_ctmFilter.type==='libre') msgs=msgs.filter(m=>!m.isShort);
+  if(_ctmFilter.sender) msgs=msgs.filter(m=>m.from===_ctmFilter.sender);
+  if(_ctmFilter.text) msgs=msgs.filter(m=>
+    m.text.toLowerCase().includes(_ctmFilter.text)||
+    m.from.toLowerCase().includes(_ctmFilter.text)
+  );
+  const countEl=document.getElementById('ctm-count');
+  if(countEl) countEl.textContent='— '+msgs.length+' message(s)';
+  const listEl=document.getElementById('ctm-list');
+  if(!listEl) return;
+  if(msgs.length===0){
+    listEl.innerHTML='<div style="text-align:center;color:var(--m);padding:32px">📭 Aucun message</div>';
+    return;
+  }
+  listEl.innerHTML=msgs.map(m=>{
+    const sU=USERS_DB[m.from]||{role:'VISIT',display:m.from};
+    const sColor=_formRoleColor(sU.role||'VISIT');
+    const sName=(sU.display||m.from).split('—')[0].trim();
+    const toNames=(m.to||[]).map(t=>{const u=USERS_DB[t];return u?(u.display||t).split('—')[0].trim():t;}).join(', ');
+    const dt=new Date(m.ts);
+    const dateStr=dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'})+' '+dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    return '<div style="background:var(--c2);border-radius:10px;padding:12px 14px;margin-bottom:8px;border-left:3px solid '+(m.isShort?'#40C4FF':sColor)+'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+          '<span style="background:'+sColor+'22;border:1px solid '+sColor+'44;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:700;color:'+sColor+'">'+
+            _formRoleIcon(sU.role)+' '+sName+'</span>'+
+          '<span style="font-size:11px;color:var(--m)">→ <span style="color:#EEF0F5">'+toNames+'</span></span>'+
+          (m.isShort?'<span style="background:#40C4FF22;color:#40C4FF;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700">⚡ SHORT</span>':'')+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:8px">'+
+          '<span style="font-size:10px;color:var(--m)">'+dateStr+'</span>'+
+          '<button onclick="event.stopPropagation();_deleteFormCtrlMsgByTs("+(m.ts||0)+")" style="background:transparent;border:1px solid var(--r)44;color:var(--r);border-radius:5px;padding:2px 8px;cursor:pointer;font-size:10px;font-family:inherit">🗑</button>'+
+        '</div>'+
+      '</div>'+
+      '<div style="font-size:12px;color:#CDD5E0;line-height:1.6;background:var(--c1);border-radius:7px;padding:8px 12px;white-space:pre-wrap">'+m.text+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+function _deleteFormCtrlMsg(id){
+  if(!confirm('Supprimer ce message ?'))return;
+  MESSAGES=MESSAGES.filter(m=>m.id!==id);
+  saveMessages();
+  renderCtMessages();
+}
+function _deleteFormCtrlMsgByTs(ts){
+  const msg=MESSAGES.find(m=>(m.ts||0)===ts);
+  if(!msg)return;
+  if(!confirm('Supprimer ce message ?'))return;
+  MESSAGES=MESSAGES.filter(m=>m.ts!==ts);
+  saveMessages();
+  renderCtMessages();
+}
+
+function _deleteAllFormMsgs(){
+  if(MESSAGES.length===0){alert('Aucun message à supprimer.');return;}
+  if(!confirm('⚠️ Supprimer TOUS les '+MESSAGES.length+' messages ?'))return;
+  MESSAGES=[];
+  saveMessages();
+  renderCtMessages();
 }
 
 function saveMessages(){
