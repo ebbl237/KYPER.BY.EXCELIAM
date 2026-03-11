@@ -584,14 +584,11 @@ body.day-mode .msg-thread-header:hover{background:#EEF0F8}
       <div class="card">
         <div class="stitle">◆ IDENTIFICATION</div>
         <div class="g2">
-          <div class="field"><div class="flbl">AGENT ÉVALUÉ *</div><select class="inp" id="e-agent"><option value="">— Sélectionner —</option><option>CAMARA DOUGOU MAWA</option><option>SEPHORA DJOLLO</option><option>KOUAMENAN ORNELLA</option><option>TOBA ANGE</option><option>KOUAHO EZAN MORELLE</option><option>ERWIN CHRIS LOIC ZIDAGO</option><option>KONAN OURA AURIOL</option><option>PAMBO CHANTILLIA MURIELLE</option><option>DAGO ESPERANCE EDWIGE</option><option>KALDJOBALH BERNADETTE AMBRE</option><option>TA LOU MARIE-PAULE</option><option>ANOUMAN ANGE DANIEL</option><option>KOUASSI HADDAD</option><option>SANOU ELSA</option><option>DJEDJE MEL DAVID</option></select></div>
+          <div class="field"><div class="flbl">AGENT ÉVALUÉ *</div><select class="inp" id="e-agent"><option value="">— Sélectionner —</option></select></div>
           <div class="field"><div class="flbl">DATE ÉVALUATION *</div><input type="date" class="inp" id="e-date"/></div>
           <div class="field"><div class="flbl">INDICE D'APPEL</div><input class="inp" id="e-indice" placeholder="ex: 109901/25344"/></div>
           <div class="field"><div class="flbl">NIVEAU D'APPEL</div><select class="inp" id="e-niveau"><option value="">—</option><option>CALL 1</option><option>CALL 2</option></select></div>
-          <div class="field"><div class="flbl">SUPERVISEUR</div><select class="inp" id="e-sup"><option value="">—</option><option>EUNICE A</option>
-<option>FELIX A</option>
-<option>MONIQUE A</option>
-<option>ALAIN D</option></select></div>
+          <div class="field"><div class="flbl">SUPERVISEUR</div><select class="inp" id="e-sup"><option value="">—</option></select></div>
           <div class="field"><div class="flbl">DATE D'ENREGISTREMENT</div><input type="date" class="inp" id="e-date-enreg"/></div>
           <div class="field"><div class="flbl">ÉVALUATEUR *</div><select class="inp" id="e-evaluateur">
 <option value="">—</option>
@@ -771,26 +768,36 @@ function applyRolePermissions(){
   if(!currentUser)return;
   const role=currentUser.role;
   const isRQF=role==='RQF';
-  const isCtrl=role==='CTRL'||role==='SUP';
-  const isVisit=role==='VISIT'||role==='CDP'||role==='FORMATEUR';
+  const tabs=currentUser.tabs||null;
 
-  // Onglet ÉVALUATION : accessible à tous les collaborateurs connectés
-  const nbEval=document.getElementById('nb-eval');
-  if(nbEval) nbEval.style.display='';
+  // Onglets nav Fidelis
+  const NAV_MAP=[
+    {nav:'nb-eval',       page:'eval'},
+    {nav:'nb-agent',      page:'agent'},
+    {nav:'nb-evaluateur', page:'evaluateur'},
+    {nav:'nb-data',       page:'data'},
+    {nav:'nb-agents',     page:'agents'},
+    {nav:'nb-debrief',    page:'debrief'},
+    {nav:'nb-controleur', page:'controleur'},
+    {nav:'nb-messages',   page:'messages'},
+  ];
 
-  // Onglet BASE DATA: CTRL, SUP, RQF seulement
-  const nbData=document.getElementById('nb-data');
-  if(nbData) nbData.style.display=isVisit?'none':'';
+  NAV_MAP.forEach(({nav,page})=>{
+    const el=document.getElementById(nav);
+    if(!el)return;
+    let show;
+    if(tabs){
+      show=tabs.includes(page);
+    } else {
+      // Accès par défaut selon rôle
+      if(page==='controleur') show=isRQF;
+      else if(page==='data')  show=role==='RQF'||role==='CTRL'||role==='SUP';
+      else show=true;
+    }
+    el.style.display=show?'':'none';
+  });
 
-  // Onglet AGENTS: CTRL, SUP, RQF
-  const nbAgents=document.getElementById('nb-agents');
-  if(nbAgents) nbAgents.style.display=(isRQF||isCtrl)?'':'none';
-
-  // Onglet CONTRÔLEUR: RQF UNIQUEMENT
-  const nbCtrl=document.getElementById('nb-controleur');
-  if(nbCtrl) nbCtrl.style.display=isRQF?'':'none';
-
-  // Onglet CONTRÔLE MESSAGES dans contrôleur: RQF uniquement
+  // Onglet CONTRÔLE MESSAGES dans contrôleur : RQF uniquement
   const ctMsgs=document.getElementById('ct-tab-msgs');
   if(ctMsgs) ctMsgs.style.display=isRQF?'':'none';
 }
@@ -895,6 +902,13 @@ function initFidelisFirebase(){
       _fbdb.ref('/kyper/fidelis/agents').on('value',snap=>{
         const d=snap.val();
         if(d){AGENTS_DB=objToArr(d);}
+        // Repeupler les selects du formulaire si la page eval est active
+        if(document.querySelector('.page:not(.ph)')?.id==='page-eval') buildGrille();
+      });
+      // Users — sync temps réel des comptes
+      _fbdb.ref('/kyper/fidelis/users').on('value',snap=>{
+        const d=snap.val();
+        if(d){USERS_DB={...USERS_DB,...d};}
       });
       document.getElementById("fb-loading").style.display="none";
       if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();applyRolePermissions();renderDash();}
@@ -1064,6 +1078,26 @@ function buildGrille(){
     </div>`).join("");
   updateScore();
 
+  // Peupler e-agent depuis AGENTS_DB (temps réel)
+  const agSel=document.getElementById("e-agent");
+  if(agSel){
+    const curAg=agSel.value;
+    agSel.innerHTML='<option value="">— Sélectionner —</option>';
+    (AGENTS_DB||[]).filter(a=>!a.statut||a.statut==="actif").forEach(a=>{
+      const o=document.createElement("option");
+      o.value=a.nom;o.textContent=a.nom;agSel.appendChild(o);
+    });
+    if(curAg)agSel.value=curAg;
+  }
+  // Peupler e-sup depuis AGENTS_DB (superviseurs uniques)
+  const supSel=document.getElementById("e-sup");
+  if(supSel){
+    const curSup=supSel.value;
+    supSel.innerHTML='<option value="">—</option>';
+    const sups=[...new Set((AGENTS_DB||[]).filter(a=>a.sup).map(a=>a.sup))];
+    sups.forEach(s=>{const o=document.createElement("option");o.value=s;o.textContent=s;supSel.appendChild(o);});
+    if(curSup)supSel.value=curSup;
+  }
   // Pré-sélectionner l'évaluateur connecté à l'ouverture du formulaire
   if(currentUser){
     const sel=document.getElementById("e-evaluateur");
@@ -1883,6 +1917,22 @@ function renderCtComptes(){
           <option value="VISIT">👁 Visiteur</option>
         </select></div>
     </div>
+    <!-- Accréditation par onglet Fidelis -->
+    <div style="margin-top:14px;padding:12px;background:var(--c2);border-radius:8px;border:1px solid var(--bd)">
+      <div style="font-size:11px;font-weight:700;color:var(--fid);margin-bottom:10px">🔐 ACCRÉDITATION PAR ONGLET <span style="color:var(--m);font-weight:400">(tout coché = accès complet)</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px">
+        ${[
+          {id:"eval",       icon:"📝",label:"Évaluation"},
+          {id:"agent",      icon:"👤",label:"Par Agent"},
+          {id:"evaluateur", icon:"🎯",label:"Par Évaluateur"},
+          {id:"data",       icon:"🗄️", label:"Base Data"},
+          {id:"agents",     icon:"👥",label:"Agents"},
+          {id:"debrief",    icon:"📋",label:"Débrief"},
+          {id:"controleur", icon:"🔍",label:"Contrôleur (RQF)"},
+          {id:"messages",   icon:"💬",label:"Messages"},
+        ].map(t=>'<label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:var(--c1);border-radius:6px;padding:5px 8px;border:1px solid var(--bd)"><input type="checkbox" id="fct-'+t.id+'" value="'+t.id+'" checked style="cursor:pointer"><span style="font-size:11px">'+t.icon+' '+t.label+'</span></label>').join("")}
+      </div>
+    </div>
     <input type="hidden" id="fc-editing" value="">
     <div style="display:flex;gap:8px;margin-top:14px">
       <button onclick="sauvegarderCompte()" style="background:var(--fid2);color:#fff;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:700;font-size:12px">💾 Enregistrer</button>
@@ -1898,6 +1948,8 @@ function ouvrirEditCompte(username){
   document.getElementById("fc-pass").value=u.password;document.getElementById("fc-display").value=u.display;
   document.getElementById("fc-role").value=u.role;document.getElementById("fc-editing").value=username;
   document.getElementById("fc-annuler").style.display="";
+  const ALL_TABS_F=["eval","agent","evaluateur","data","agents","debrief","controleur","messages"];
+  ALL_TABS_F.forEach(t=>{const cb=document.getElementById("fct-"+t);if(cb)cb.checked=!u.tabs||u.tabs.includes(t);});
   document.getElementById("form-compte-card").scrollIntoView({behavior:"smooth",block:"center"});
 }
 function annulerEditCompte(){
@@ -1917,7 +1969,9 @@ function sauvegarderCompte(){
   const msg=document.getElementById("fc-msg");
   if(!username||!password||!display||!role){msg.style.display="";msg.style.color="var(--r)";msg.textContent="⚠️ Tous les champs sont obligatoires.";return;}
   if(!editing&&USERS_DB[username]){msg.style.display="";msg.style.color="var(--r)";msg.textContent="⚠️ L'identifiant "+username+" existe déjà.";return;}
-  USERS_DB[username]={password,role,display};saveUsersDB();
+  const ALL_TABS_F=["eval","agent","evaluateur","data","agents","debrief","controleur","messages"];
+  const tabs=ALL_TABS_F.filter(t=>{const cb=document.getElementById("fct-"+t);return cb?cb.checked:true;});
+  USERS_DB[username]={password,role,display,tabs};saveUsersDB();
   msg.style.display="";msg.style.color="var(--g)";
   msg.textContent=editing?"✅ Compte "+username+" modifié.":"✅ Compte "+username+" créé.";
   setTimeout(()=>{annulerEditCompte();renderCtComptes();},1200);
