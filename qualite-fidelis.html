@@ -758,8 +758,39 @@ function doLogin(){
   saveAccessLog();
   document.getElementById("login-screen").style.display="none";
   updateUserBadge();
+  applyRolePermissions();
   renderDash();
 }
+
+// ══ Gestion des rôles et visibilité nav ══════════════════════
+function applyRolePermissions(){
+  if(!currentUser)return;
+  const role=currentUser.role;
+  const isRQF=role==='RQF';
+  const isCtrl=role==='CTRL'||role==='SUP';
+  const isVisit=role==='VISIT'||role==='CDP'||role==='FORMATEUR';
+
+  // Onglet ÉVALUATION (créer): CTRL, SUP, RQF seulement
+  const nbEval=document.getElementById('nb-eval');
+  if(nbEval) nbEval.style.display=isVisit?'none':'';
+
+  // Onglet BASE DATA: CTRL, SUP, RQF seulement
+  const nbData=document.getElementById('nb-data');
+  if(nbData) nbData.style.display=isVisit?'none':'';
+
+  // Onglet AGENTS: CTRL, SUP, RQF
+  const nbAgents=document.getElementById('nb-agents');
+  if(nbAgents) nbAgents.style.display=(isRQF||isCtrl)?'':'none';
+
+  // Onglet CONTRÔLEUR: RQF UNIQUEMENT
+  const nbCtrl=document.getElementById('nb-controleur');
+  if(nbCtrl) nbCtrl.style.display=isRQF?'':'none';
+
+  // Onglet CONTRÔLE MESSAGES dans contrôleur: RQF uniquement
+  const ctMsgs=document.getElementById('ct-tab-msgs');
+  if(ctMsgs) ctMsgs.style.display=isRQF?'':'none';
+}
+
 function doLogout(){if(!confirm("Se déconnecter ?"))return;currentUser=null;sessionStorage.removeItem("kyper_fidelis");location.reload();}
 function updateUserBadge(){
   if(!currentUser)return;
@@ -788,7 +819,7 @@ function initFidelisFirebase(){
     if(fbMsg) fbMsg.textContent="⚠️ Mode local — configurez Firebase pour partager les données";
     setTimeout(()=>{
       document.getElementById("fb-loading").style.display="none";
-      if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();renderDash();}
+      if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();applyRolePermissions();renderDash();}
     },3000);
     return;
   }
@@ -796,7 +827,7 @@ function initFidelisFirebase(){
   const _fbTimeout = setTimeout(()=>{
     if(!_fbReady){
       document.getElementById("fb-loading").style.display="none";
-      if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();renderDash();}
+      if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();applyRolePermissions();renderDash();}
     }
   },12000);
 
@@ -862,14 +893,14 @@ function initFidelisFirebase(){
         if(d){AGENTS_DB=objToArr(d);}
       });
       document.getElementById("fb-loading").style.display="none";
-      if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();renderDash();}
+      if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();applyRolePermissions();renderDash();}
     }).catch(err=>{
       if(fbErr){fbErr.style.display="block";fbErr.innerHTML=`<b>Erreur Firebase :</b> ${err.message}<br>Vérifiez les règles (mode test).`;}
       if(fbMsg) fbMsg.textContent="⚠️ Mode local";
       clearTimeout(_fbTimeout);
       setTimeout(()=>{
         document.getElementById("fb-loading").style.display="none";
-        if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();renderDash();}
+        if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();applyRolePermissions();renderDash();}
       },3000);
     });
   }catch(err){
@@ -877,7 +908,7 @@ function initFidelisFirebase(){
     clearTimeout(_fbTimeout);
     setTimeout(()=>{
       document.getElementById("fb-loading").style.display="none";
-      if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();renderDash();}
+      if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();applyRolePermissions();renderDash();}
     },3000);
   }
 }
@@ -1504,7 +1535,7 @@ document.addEventListener("DOMContentLoaded",()=>{
     <button class="pq-btn"     id="ct-tab-supprs" onclick="showCtTab('supprs',this)">🗑️ SUPPRESSIONS</button>
     <button class="pq-btn"     id="ct-tab-acces"  onclick="showCtTab('acces',this)">🔐 ACCÈS</button>
     <button class="pq-btn"     id="ct-tab-comptes" onclick="showCtTab('comptes',this)">👥 COMPTES</button>
-    <button class="pq-btn"     id="ct-tab-msgs" onclick="showCtTab('msgs',this)" style="color:#40C4FF">💬 CONTRÔLE MESSAGES</button>
+    <button class="pq-btn"     id="ct-tab-msgs" onclick="showCtTab('msgs',this)" style="color:#40C4FF;display:none">💬 CONTRÔLE MESSAGES</button>
   </div>
   <div id="ctrl-content"></div>
 </div>
@@ -1643,7 +1674,7 @@ function buildDebriefCard(e,tab){
   </div>`;
 }
 function validerDebrief(id,status){
-  const idx=evals.findIndex(e=>e.id===id);if(idx===-1)return;
+  const idx=evals.findIndex(e=>String(e.id)===String(id));if(idx===-1)return;
   const comment=document.getElementById("dbn-"+id)?.value||"";
   evals[idx].debriefStatus=status;
   evals[idx].debriefSupComment=comment;
@@ -2328,7 +2359,7 @@ function loadGrilleDebrief(){
 }
 
 function setGrilleCrit(evalId,critId,val,btn){
-  const ev=evals.find(e=>e.id===evalId);
+  const ev=evals.find(e=>String(e.id)===String(evalId));
   if(!ev)return;
   if(!ev.criteres)ev.criteres={};
   // Toggle: click same → deselect
@@ -2353,7 +2384,7 @@ function setGrilleCrit(evalId,critId,val,btn){
 }
 
 function updateGrilleScore(evalId){
-  const ev=evals.find(e=>e.id===evalId);
+  const ev=evals.find(e=>String(e.id)===String(evalId));
   if(!ev||!ev.criteres)return;
   let totPts=0,maxPts=0,nC=0,nPC=0,nNC=0,nNA=0;
   CRITERES.forEach(sec=>sec.items.forEach(item=>{
@@ -2382,7 +2413,7 @@ function updateGrilleScore(evalId){
 }
 
 function sauvegarderGrilleDebrief(evalId){
-  const ev=evals.find(e=>e.id===evalId);
+  const ev=evals.find(e=>String(e.id)===String(evalId));
   if(!ev)return;
   ev.debriefGrilleComment=document.getElementById("grille-com-actions")?.value||"";
   ev.debriefGrilleForts=document.getElementById("grille-com-forts")?.value||"";
@@ -2413,7 +2444,7 @@ function sauvegarderGrilleDebrief(evalId){
 }
 
 function exporterGrilleDebrief(evalId){
-  const ev=evals.find(e=>e.id===evalId);
+  const ev=evals.find(e=>String(e.id)===String(evalId));
   if(!ev)return;
   const sc=ev.score||0;const scC=sc>=80?"#10B981":sc>=60?"#F59E0B":"#EF4444";
   const gs=ev.debriefGrilleScore||0;const gsC=gs>=80?"#10B981":gs>=60?"#F59E0B":"#EF4444";
@@ -2611,7 +2642,7 @@ if(typeof rebuildAgentSelects==="function")rebuildAgentSelects();
 
 /* ══ DÉBRIEF MODAL ═════════════════════════════════════════════ */
 function ouvrirGrilleDebrief(evalId){
-  const ev=evals.find(e=>e.id===evalId);
+  const ev=evals.find(e=>String(e.id)===String(evalId));
   if(!ev)return;
   const sc=ev.score||0;const scC=sc>=80?"#10B981":sc>=60?"#F59E0B":"#EF4444";
   const crit=ev.criteres||{};
@@ -2801,7 +2832,7 @@ function confirmerRefus(id){
 }
 
 function ouvrirRefusModal(evalId,from){
-  const ev=evals.find(e=>e.id===evalId);if(!ev)return;
+  const ev=evals.find(e=>String(e.id)===String(evalId));if(!ev)return;
   const existing=document.getElementById("quick-refus-modal");
   if(existing)existing.remove();
   const div=document.createElement("div");
@@ -2825,7 +2856,7 @@ function confirmerRefusModal(evalId,from){
   const motif=document.getElementById("qr-motif")?.value.trim();
   if(!motif){alert("⚠️ Motif obligatoire");return;}
   const plan=document.getElementById("qr-plan")?.value.trim()||"";
-  const idx=evals.findIndex(e=>e.id===evalId);if(idx===-1)return;
+  const idx=evals.findIndex(e=>String(e.id)===String(evalId));if(idx===-1)return;
   evals[idx].debriefStatus="annule";
   evals[idx].refusMotif=motif;
   evals[idx].refusPlan=plan;
@@ -2852,7 +2883,7 @@ const SHORT_REQUESTS=[
 ];
 
 function loadMessages(){/* données gérées par FB.listen en temps réel */}
-function saveMessages(){FB.set("/fidelis/messages",arrToObj(MESSAGES));if(!_fbReady)localStorage.setItem("fidelis_messages_v1",JSON.stringify(MESSAGES));}
+function saveMessages(){FB.set("/messages",arrToObj(MESSAGES));if(!_fbReady)localStorage.setItem("fidelis_messages_v1",JSON.stringify(MESSAGES));}
 
 function getUnreadCount(){
   if(!currentUser)return 0;
