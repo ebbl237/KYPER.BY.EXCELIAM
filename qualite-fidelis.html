@@ -1224,7 +1224,8 @@ let USERS_DB={
   "GREGOIRE_FABRICE":{password:"GREGOIRE@KYPER",role:"SUP",display:"GREGOIRE FABRICE — Superviseur"},
   "VISITEUR":{password:"VISIT@KYPER",role:"VISIT",display:"Visiteur"},
   "CDP":{password:"CDP@KYPER",role:"CDP",display:"Chef de Projet"},
-  "FORMATEUR":{password:"FORM@KYPER",role:"FORM",display:"Formateur"}
+  "FORMATEUR":{password:"FORM@KYPER",role:"FORM",display:"Formateur"},
+  "LORRAINE":{password:"LORRAINE@KYPER",role:"CTRL",display:"LORRAINE — Contrôleur"}
 };
 const ROLE_ICONS={RQF:"👑",SUP:"🎯",CTRL:"🔍",VISIT:"👁"};
 const ROLE_COLORS={RQF:"var(--fid)",SUP:"var(--o)",CTRL:"var(--pa)",VISIT:"var(--m)"};
@@ -1360,6 +1361,17 @@ function initFidelisFirebase(){
       _fbdb.ref('/kyper/fidelis/agents').on('value',snap=>{
         const d=snap.val();
         if(d){AGENTS_DB=objToArr(d);}
+      });
+      // ── Listener Users (accès/comptes) ──
+      _fbdb.ref('/kyper/fidelis/users').on('value',snap=>{
+        const d=snap.val();
+        if(d && typeof d==='object'){
+          USERS_DB = {...USERS_DB, ...d};
+          // Rafraîchir la table users si ouverte
+          if(typeof renderPrmUserTable==='function' && document.getElementById('prm-users-table')){
+            renderPrmUserTable();
+          }
+        }
       });
       document.getElementById("fb-loading").style.display="none";
       if(currentUser){document.getElementById("login-screen").style.display="none";updateUserBadge();renderDash();}
@@ -3428,41 +3440,54 @@ function ouvrirGrilleDebrief(evalId){
   }
 
   
-  // ── SYNTHÈSE POINTS FORTS / POINTS À AMÉLIORER ──────────────────
-  const sConf=[], sPc=[], sNc=[];
-  (CRITERES||[]).forEach(sec=>sec.items.forEach(item=>{
-    const v=crit[item.id];
+  // ── SYNTHÈSE C / PC / NC par critère depuis ev.criteres (DB) ──────────
+  const _critRef = (typeof CRITERES !== 'undefined' && CRITERES.length) ? CRITERES : (typeof CRITERES_DEFAULT !== 'undefined' ? CRITERES_DEFAULT : []);
+  const _sNC=[], _sPC=[], _sConf=[];
+  _critRef.forEach(sec=>(sec.items||[]).forEach(item=>{
+    const v = crit[item.id];
     if(!v||v==='na') return;
-    const secShort=sec.section.length>20?sec.section.slice(0,18)+'…':sec.section;
-    const tag=`<span style="display:inline-flex;flex-direction:column;background:rgba(0,0,0,.3);border-radius:8px;padding:5px 9px;margin:3px;max-width:200px">
-      <span style="font-size:9px;color:rgba(255,255,255,.35);letter-spacing:.5px;margin-bottom:2px">${secShort}</span>
-      <span style="font-size:11px;color:rgba(255,255,255,.8);font-weight:600;line-height:1.3">${item.label}</span>
-    </span>`;
-    if(v==='conf') sConf.push(tag);
-    else if(v==='pc') sPc.push(tag);
-    else if(v==='nc') sNc.push(tag);
+    // Badge de l'item : section courte + label
+    const secShort = sec.section.length>22 ? sec.section.slice(0,20)+'…' : sec.section;
+    const tag = `<div style="background:rgba(0,0,0,.25);border-radius:8px;padding:6px 10px;margin:3px;max-width:220px;flex-shrink:0">
+      <div style="font-size:8px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${secShort}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.85);font-weight:600;line-height:1.3">${item.label}</div>
+      <div style="font-size:9px;margin-top:2px;font-weight:700;color:${v==='conf'?'#34D399':v==='pc'?'#FCD34D':'#F87171'}">${v==='conf'?'✅ Conforme':v==='pc'?'⚠️ Part. Conf.':'❌ Non Conf.'}</div>
+    </div>`;
+    if(v==='nc')  _sNC.push(tag);
+    else if(v==='pc') _sPC.push(tag);
+    else if(v==='conf') _sConf.push(tag);
   }));
 
-  if(sConf.length||sPc.length||sNc.length){
-    body+=`<div style="background:#111827;border-radius:12px;padding:16px 20px;margin-top:16px;border:1px solid rgba(255,255,255,.08)">
-      <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.5);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px">📋 SYNTHÈSE DÉBRIEF</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-        ${sNc.length?`<div style="background:#EF444411;border:1px solid #EF444433;border-radius:10px;padding:12px">
-          <div style="font-size:10px;font-weight:800;color:#F87171;margin-bottom:8px;display:flex;align-items:center;gap:6px">❌ POINTS À CORRIGER <span style="background:#EF444433;color:#F87171;border-radius:10px;padding:1px 7px;font-size:9px">${sNc.length}</span></div>
-          <div style="display:flex;flex-wrap:wrap;gap:3px">${sNc.join('')}</div>
-        </div>`:''}
-        ${sPc.length?`<div style="background:#F59E0B11;border:1px solid #F59E0B33;border-radius:10px;padding:12px">
-          <div style="font-size:10px;font-weight:800;color:#FCD34D;margin-bottom:8px;display:flex;align-items:center;gap:6px">⚠️ POINTS À AMÉLIORER <span style="background:#F59E0B33;color:#FCD34D;border-radius:10px;padding:1px 7px;font-size:9px">${sPc.length}</span></div>
-          <div style="display:flex;flex-wrap:wrap;gap:3px">${sPc.join('')}</div>
-        </div>`:''}
-        ${sConf.length?`<div style="background:#10B98111;border:1px solid #10B98133;border-radius:10px;padding:12px">
-          <div style="font-size:10px;font-weight:800;color:#34D399;margin-bottom:8px;display:flex;align-items:center;gap:6px">✅ POINTS À FÉLICITER <span style="background:#10B98133;color:#34D399;border-radius:10px;padding:1px 7px;font-size:9px">${sConf.length}</span></div>
-          <div style="display:flex;flex-wrap:wrap;gap:3px">${sConf.join('')}</div>
-        </div>`:''}
+  if(_sConf.length||_sPC.length||_sNC.length){
+    body += `<div style="background:#111827;border-radius:12px;padding:16px 20px;margin-top:16px;border:1px solid rgba(255,255,255,.07)">
+      <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.45);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px">
+        📋 SYNTHÈSE DÉBRIEF — GRILLE D'ÉVALUATION
+        <span style="font-size:9px;background:rgba(255,255,255,.08);border-radius:10px;padding:2px 8px;font-weight:600;color:rgba(255,255,255,.4)">${_sNC.length+_sPC.length+_sConf.length} critères renseignés</span>
       </div>
+      ${_sNC.length ? `<div style="margin-bottom:14px">
+        <div style="font-size:10px;font-weight:800;color:#F87171;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+          ❌ POINTS À CORRIGER
+          <span style="background:#EF444433;color:#F87171;border-radius:10px;padding:1px 8px;font-size:9px">${_sNC.length}</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:0">${_sNC.join('')}</div>
+      </div>` : ''}
+      ${_sPC.length ? `<div style="margin-bottom:14px">
+        <div style="font-size:10px;font-weight:800;color:#FCD34D;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+          ⚠️ POINTS À AMÉLIORER
+          <span style="background:#F59E0B33;color:#FCD34D;border-radius:10px;padding:1px 8px;font-size:9px">${_sPC.length}</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:0">${_sPC.join('')}</div>
+      </div>` : ''}
+      ${_sConf.length ? `<div>
+        <div style="font-size:10px;font-weight:800;color:#34D399;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+          ✅ POINTS À FÉLICITER
+          <span style="background:#10B98133;color:#34D399;border-radius:10px;padding:1px 8px;font-size:9px">${_sConf.length}</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:0">${_sConf.join('')}</div>
+      </div>` : ''}
     </div>`;
   }
-  // ────────────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────
   document.getElementById("dbr-modal-body").innerHTML=body;
   document.getElementById("dbr-modal-overlay").classList.add("open");
 }
@@ -5384,7 +5409,17 @@ function ouvrirContreEvalFidelis(evalId){
   const ev = evals.find(e => String(e.id)===String(evalId));
   if(!ev){ alert('Évaluation introuvable'); return; }
   _cefEvalId = evalId;
+  // Init _cefCriteres depuis ev.criteres → les items non modifiés conservent leur valeur initiale
   _cefCriteres = {};
+  {
+    const _evCef = evals.find(function(e){ return String(e.id)===String(evalId); });
+    const _critR = (typeof CRITERES!=='undefined'&&CRITERES.length)?CRITERES:(typeof CRITERES_DEFAULT!=='undefined'?CRITERES_DEFAULT:[]);
+    if(_evCef && _evCef.criteres){
+      _critR.forEach(function(sec){ (sec.items||[]).forEach(function(item){
+        if(_evCef.criteres[item.id]) _cefCriteres[item.id] = _evCef.criteres[item.id];
+      });});
+    }
+  }
 
   let modal = document.getElementById('cef-modal');
   if(!modal){
@@ -5399,7 +5434,8 @@ function ouvrirContreEvalFidelis(evalId){
 
   // Construire les sections
   let sectionsHtml = '';
-  (CRITERES||[]).forEach(sec => {
+  const _cefCritRef=(typeof CRITERES!=='undefined'&&CRITERES.length)?CRITERES:(typeof CRITERES_DEFAULT!=='undefined'?CRITERES_DEFAULT:[]);
+  _cefCritRef.forEach(sec => {
     const rows = (sec.items||[]).map(item => {
       const valAct = crit[item.id] || null;
       const opts = [
@@ -5495,7 +5531,8 @@ function ouvrirContreEvalFidelis(evalId){
   document.body.style.overflow = 'hidden';
 
   // Initialiser _cefCriteres avec les valeurs actuelles
-  (CRITERES||[]).forEach(sec => (sec.items||[]).forEach(item => {
+  const _acefCR=(typeof CRITERES!=='undefined'&&CRITERES.length)?CRITERES:(typeof CRITERES_DEFAULT!=='undefined'?CRITERES_DEFAULT:[]);
+  _acefCR.forEach(sec => (sec.items||[]).forEach(item => {
     _cefCriteres[item.id] = crit[item.id] || null;
   }));
   _cefUpdateScoreF();

@@ -3998,13 +3998,13 @@ let _editingPlanId = null;
 
 // ── Firebase init (appelé dans initApp) ─────────────────────────────────
 function initPlanning(){
-  FB.on('/planning/sessions', d => {
+  FB.listen('/planning/sessions', d => {
     planSessions = d ? Object.values(d).filter(x=>x) : [];
     planSeq = planSessions.length ? Math.max(...planSessions.map(s=>s.num||0)) : 0;
     if(document.getElementById('page-planning') && !document.getElementById('page-planning').classList.contains('ph'))
       renderPlanning();
   });
-  FB.on('/planning/competences', d => {
+  FB.listen('/planning/competences', d => {
     planCompetences = d || {};
     if(_planTab === 'competences') renderPlanCompetences();
   });

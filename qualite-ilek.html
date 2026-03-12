@@ -6351,6 +6351,12 @@ function ouvrirContreEval(evalId){
       return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)" id="cerow-${it.id}">
         <td style="padding:7px 10px 7px 20px;font-size:11px;color:rgba(255,255,255,.75);line-height:1.3">${it.label}</td>
         <td style="padding:7px 8px;text-align:center;font-size:10px;color:rgba(255,255,255,.3);white-space:nowrap">${poids>0?poids+'pt':'—'}</td>
+        <td style="padding:7px 8px;text-align:center">${(()=>{
+          const _v0=_ceNotes[it.id];
+          const _lbl0=_v0==='1'?'✅ Acquis':_v0==='0.5'?'⚠️ Partiel':_v0==='0'?'❌ Non acq.':'— N/A';
+          const _col0=_v0==='1'?'#4CAF50':_v0==='0.5'?'#FF9800':_v0==='0'?'#F44336':'#607D8B';
+          return `<span style="color:${_col0};font-size:10px;font-weight:700">${_lbl0}</span>`;
+        })()}</td>
         <td style="padding:5px 8px"><div style="display:flex;gap:5px;flex-wrap:wrap">${btns}</div></td>
       </tr>`;
     }).join('');
@@ -6360,59 +6366,7 @@ function ouvrirContreEval(evalId){
   });
   const lignesCriteres = ceSections.join('');
 
-  // Groupes de catégories
-  const cats = {
-    'AC': {label:'Accueil & Politesse',       color:'#40C4FF'},
-    'OB': {label:'Gestion des Objections',    color:'#FF9800'},
-    'AU': {label:'Autorisation du Compteur',  color:'#4CAF50'},
-    'CL': {label:'Clôture & Contrôle',        color:'#B478C8'},
-  };
 
-  const catsHtml = Object.entries(cats).map(([cat, cfg]) => {
-    const catItems = ITEMS.filter(it => it.cat === cat || it.categorie === cat);
-    if(!catItems.length) return '';
-    const rows = catItems.map(it => {
-      const valAct = ev.notes && ev.notes[it.id] !== undefined ? Number(ev.notes[it.id]) : null;
-      const poids  = it.poids || it.p || 0;
-      const selOpts = [
-        {v:'1',   l:'Acquis ✅'},
-        {v:'0.5', l:'Partiel ⚠️'},
-        {v:'0',   l:'Non acquis ❌'},
-        {v:'NA',  l:'N/A —'},
-      ];
-      const optHtml = selOpts.map(o =>
-        `<option value="${o.v}" ${String(valAct) === o.v || (valAct === null && o.v==='NA') ? 'selected' : ''}>${o.l}</option>`
-      ).join('');
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,.06)">
-        <td style="padding:8px 12px;font-size:11px;color:rgba(255,255,255,.75);line-height:1.4">${it.label}</td>
-        <td style="padding:8px 8px;text-align:center;font-size:10px;color:rgba(255,255,255,.35)">${poids > 0 ? poids + 'pt' : '—'}</td>
-        <td style="padding:8px 8px;text-align:center;font-size:11px;font-weight:700;color:${valAct >= 0.8 ? '#4CAF50' : valAct >= 0.4 ? '#FF9800' : valAct === null ? '#607D8B' : '#F44336'}">
-          ${valAct !== null ? (valAct >= 1 ? 'Acquis' : valAct >= 0.4 ? 'Partiel' : 'Non acquis') : 'N/A'}
-        </td>
-        <td style="padding:8px 8px">
-          <select id="ce-${it.id}" style="background:#1a1d2e;border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:6px;padding:5px 8px;font-size:11px;width:100%;cursor:pointer"
-            onchange="_ceNotes['${it.id}']=this.value;_ceUpdateScore()">
-            ${optHtml}
-          </select>
-        </td>
-      </tr>`;
-    }).join('');
-    return `<div style="margin-bottom:14px">
-      <div style="font-size:10px;font-weight:900;color:${cfg.color};letter-spacing:1px;text-transform:uppercase;padding:0 12px;margin-bottom:6px;border-left:3px solid ${cfg.color};padding-left:10px">
-        ${cfg.label}
-      </div>
-      <table style="width:100%;border-collapse:collapse;background:#13151F;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.08)">
-        <thead>
-          <tr style="background:rgba(255,255,255,.04)">
-            <th style="padding:6px 12px;text-align:left;font-size:9px;color:rgba(255,255,255,.35);letter-spacing:.7px;text-transform:uppercase">Critère</th>
-            <th style="padding:6px 8px;text-align:center;font-size:9px;color:rgba(255,255,255,.35);letter-spacing:.7px;text-transform:uppercase;white-space:nowrap">Poids</th>
-            <th style="padding:6px 8px;text-align:left;font-size:9px;color:rgba(255,255,255,.35);letter-spacing:.7px;text-transform:uppercase">Nouvelle note</th>
-          </tr>
-        </thead>
-        <tbody>${lignesCriteres}</tbody>
-      </table>
-    </div>`;
-  }).join('');
 
   modal.innerHTML = `
   <div style="max-width:860px;margin:0 auto;background:#0D0F1A;border-radius:16px;border:1px solid rgba(255,130,0,.4);overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.8)">
@@ -6431,6 +6385,14 @@ function ouvrirContreEval(evalId){
     <!-- CONTENU -->
     <div style="padding:20px 22px;max-height:75vh;overflow-y:auto">
 
+      <!-- Bandeau info CE officielle -->
+      <div style="background:rgba(255,130,0,.1);border:1px solid rgba(255,130,0,.3);border-radius:8px;padding:9px 14px;margin-bottom:14px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">ℹ️</span>
+        <span style="font-size:11px;color:rgba(255,200,100,.8);line-height:1.4">
+          La contre-évaluation <strong>remplace définitivement</strong> le score initial. 
+          Chaque item affiche sa note d'origine — modifiez uniquement ce qui a changé.
+        </span>
+      </div>
       <!-- Score actuel + nouveau score -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
         <div style="background:#13151F;border:1px solid rgba(255,255,255,.1);border-radius:11px;padding:14px;text-align:center">
@@ -6457,8 +6419,16 @@ function ouvrirContreEval(evalId){
         <div><div style="font-size:9px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Évaluateur</div><div style="font-size:12px;font-weight:700">${ev.evaluateur||ev.controleur||currentUser?.display||'—'}</div></div>
       </div>
 
-      <!-- Grille critères par catégorie -->
-      ${catsHtml}
+      <!-- Grille critères par section (19 items) -->
+      <table style="width:100%;border-collapse:collapse;background:#13151F;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08);margin-bottom:4px">
+        <thead><tr style="background:rgba(255,255,255,.04)">
+          <th style="padding:7px 12px;text-align:left;font-size:9px;color:rgba(255,255,255,.35);letter-spacing:.7px;text-transform:uppercase">Critère</th>
+          <th style="padding:7px 8px;text-align:center;font-size:9px;color:rgba(255,255,255,.35);white-space:nowrap">Poids</th>
+          <th style="padding:7px 8px;text-align:center;font-size:9px;color:rgba(255,255,255,.35);white-space:nowrap">Note initiale</th>
+          <th style="padding:7px 8px;text-align:left;font-size:9px;color:rgba(255,255,255,.35)">Nouvelle note</th>
+        </tr></thead>
+        <tbody>${lignesCriteres}</tbody>
+      </table>
 
       <!-- Motif de la contre-évaluation -->
       <div style="margin-top:16px">
